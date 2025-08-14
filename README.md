@@ -66,7 +66,7 @@ use_openai – set to true for OpenAI, false for Ollama.
 
 ollama_base_url – default for local Ollama install.
 
-```markdown
+```
 Gmail App Passwords: You need to enable 2FA and generate an App Password in Google Account Security settings.
 
 ## Using Ollama Locally (Offline Mode)
@@ -77,8 +77,9 @@ Install Ollama: https://ollama.ai
 
 Pull a model (example with LLaMA 3.2):
 
+```bash
 ollama pull llama3.2
-
+```
 
 Start Ollama (it usually runs at http://localhost:11434).
 
@@ -97,7 +98,7 @@ Respecting access rules – We never bypass paywalls; we only use freely availab
 
 Summarization & analysis – Articles are fed into the AI prompt:
 
-```
+```python
 prompt = (
     "Read the following article and do two things:\n"
     "1. Summarize it from the perspective of what is best for ordinary people, avoiding political spin.\n"
@@ -106,8 +107,8 @@ prompt = (
     "Keep the answer structured with clear bullet points and headings."
 )
 
-
-You can edit this prompt in main.py to suit your own needs.
+```
+You can edit this prompt in daily_news_analysis.py to suit your own needs.
 
 Email delivery – The script compiles all summaries and emails them to you.
 
@@ -115,13 +116,13 @@ Email delivery – The script compiles all summaries and emails them to you.
 Mac / Linux – cronjob
 
 Edit crontab:
-
+```bash
 crontab -e
-
+```
 Add:
-
+```bash
 0 8,20 * * * /usr/bin/python3 /path/to/sct-huginnmuninn/daily_news_analysis.py
-
+```
 
 This runs at 08:00 and 20:00 every day.
 
@@ -133,11 +134,11 @@ Create a new basic task.
 
 Set triggers for morning and evening.
 
-Action: run python with the full path to main.py.
+Action: run python with the full path to daily_news_analysis.py.
 
 ## Customization
 
-News sources – edit the news_sites list in main.py.
+News sources – edit the news_sites list in daily_news_analysis.py.
 
 Prompt style – tweak the prompt variable.
 
@@ -147,7 +148,7 @@ Model choice – swap OpenAI models (gpt-4, gpt-3.5) or Ollama models.
 
 ## Contributing
 
-See CONTRIBUTORS.md for guidelines.
+See CONTRIBUTING.md for guidelines.
 
 ## Ethics
 
@@ -164,4 +165,4 @@ Read more in ETHICS.md.
 
 Social Climate Tech - https://socialclimate.tech/
 
-SocialLab - https://socialclimate.tech/sociallab
+Social Climate Tech SocialLab - https://socialclimate.tech/sociallab
