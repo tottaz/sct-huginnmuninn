@@ -29,7 +29,6 @@ This is part of the [SocialLab](https://socialclimate.tech/sociallab), our colla
 
 ## Repository Structure
 
-sct-huginnmuninn/
 │
 ├── README.md ← This file
 ├── CONTRIBUTORS.md ← Credits and contributors
@@ -40,36 +39,34 @@ sct-huginnmuninn/
 └── requirements.txt ← Python dependencies
 
 
----
 
 ## Setup
 
 ### Clone the repo
 ```bash
-git clone https://github.com/yourusername/sct-huginnmuninn.git
-cd sct-huginnmuninn
+   git clone https://github.com/yourusername/sct-huginnmuninn.git
+   cd sct-huginnmuninn
+   pip install -r requirements.txt
 
-pip install -r requirements.txt
-
-'''
 
 Copy config.example.json to config.json and update your values:
 
-'''
-{
-    "openai_api_key": "YOUR_OPENAI_API_KEY",
-    "email": "your.email@gmail.com",
-    "app_password": "your_gmail_app_password",
-    "use_openai": true,
-    "ollama_base_url": "http://localhost:11434"
-}
+```bash
+   cp config.example.json config.json
 
-'''
+      {
+          "openai_api_key": "YOUR_OPENAI_API_KEY",
+          "email": "your.email@gmail.com",
+          "app_password": "your_gmail_app_password",
+          "use_openai": true,
+          "ollama_base_url": "http://localhost:11434"
+      }
 
 use_openai – set to true for OpenAI, false for Ollama.
 
 ollama_base_url – default for local Ollama install.
 
+```markdown
 Gmail App Passwords: You need to enable 2FA and generate an App Password in Google Account Security settings.
 
 ## Using Ollama Locally (Offline Mode)
@@ -100,6 +97,7 @@ Respecting access rules – We never bypass paywalls; we only use freely availab
 
 Summarization & analysis – Articles are fed into the AI prompt:
 
+```
 prompt = (
     "Read the following article and do two things:\n"
     "1. Summarize it from the perspective of what is best for ordinary people, avoiding political spin.\n"
