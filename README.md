@@ -29,6 +29,7 @@ This is part of the [SocialLab](https://socialclimate.tech/sociallab), our colla
 
 ## Repository Structure
 
+```bash
 │
 ├── README.md ← This file
 ├── CONTRIBUTORS.md ← Credits and contributors
@@ -37,7 +38,7 @@ This is part of the [SocialLab](https://socialclimate.tech/sociallab), our colla
 ├── config.json ← Your local config (not committed)
 ├── main.py ← The Huginn & Muninn script
 └── requirements.txt ← Python dependencies
-
+```
 
 
 ## Setup
@@ -47,7 +48,7 @@ This is part of the [SocialLab](https://socialclimate.tech/sociallab), our colla
    git clone https://github.com/yourusername/sct-huginnmuninn.git
    cd sct-huginnmuninn
    pip install -r requirements.txt
-
+```
 
 Copy config.example.json to config.json and update your values:
 
@@ -61,12 +62,12 @@ Copy config.example.json to config.json and update your values:
           "use_openai": true,
           "ollama_base_url": "http://localhost:11434"
       }
+```
 
 use_openai – set to true for OpenAI, false for Ollama.
 
 ollama_base_url – default for local Ollama install.
 
-```
 Gmail App Passwords: You need to enable 2FA and generate an App Password in Google Account Security settings.
 
 ## Using Ollama Locally (Offline Mode)
