@@ -1,0 +1,7 @@
+{
+    "openai_api_key": "YOUR_OPENAI_API_KEY",
+    "email": "your.email@gmail.com",
+    "app_password": "your_gmail_app_password",
+    "use_openai": true,
+    "ollama_base_url": "http://localhost:11434"
+}

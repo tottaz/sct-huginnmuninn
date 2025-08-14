@@ -51,8 +51,11 @@ cd sct-huginnmuninn
 
 pip install -r requirements.txt
 
+'''
+
 Copy config.example.json to config.json and update your values:
 
+'''
 {
     "openai_api_key": "YOUR_OPENAI_API_KEY",
     "email": "your.email@gmail.com",
@@ -60,6 +63,8 @@ Copy config.example.json to config.json and update your values:
     "use_openai": true,
     "ollama_base_url": "http://localhost:11434"
 }
+
+'''
 
 use_openai – set to true for OpenAI, false for Ollama.
 
