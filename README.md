@@ -52,9 +52,11 @@ This is part of the [SocialLab](https://socialclimate.tech/sociallab), our colla
 
 Copy config.example.json to config.json and update your values:
 
-```bash
-   cp config.example.json config.json
+```
+cp config.example.json config.json
+```
 
+```bash
       {
           "openai_api_key": "YOUR_OPENAI_API_KEY",
           "email": "your.email@gmail.com",

@@ -1,0 +1,14 @@
+# SCT-HuginnMuninn Requirements
+# External Python libraries needed to run daily_news_analysis.py
+
+# HTTP requests to fetch web pages
+requests>=2.30.0
+
+# HTML parsing and web scraping
+beautifulsoup4>=4.12.2
+
+# OpenAI API client (optional if using OpenAI GPT models)
+openai>=1.27.0
+
+# Ollama Python interface (optional if using Ollama locally)
+ollama>=0.1.0
