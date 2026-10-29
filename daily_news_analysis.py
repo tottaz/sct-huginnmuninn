@@ -1,124 +1,65 @@
-import requests
-from bs4 import BeautifulSoup
-from openai import OpenAI
+import argparse
 import json
+import os
+from pathlib import Path
 import smtplib
+import sys
+import tempfile
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import ollama
-from urllib.parse import urlparse, urljoin
+from datetime import datetime, timezone
 
-# === Load config ===
-with open("/config/config.json", "r") as f:
-    config = json.load(f)
+import requests
+from openai import OpenAI
+from news_scraper import NewsScraper
+from analysis_prompt import get_analysis_prompt
+from run_events import emit_event
+from email_report import render_report
+from article_settings import article_limit, DEFAULT_ARTICLE_LIMIT
+from related_coverage import summarize_related, title_from_url
+from news_history import archive_report
 
-api_key = config.get("openai_api_key")
-email = config["email"]
-app_password = config["app_password"]
-use_openai = config["use_openai"]
-ollama_base_url = config["ollama_base_url"]
+config = {}
+client = None
 
-if not api_key:
-    raise ValueError("API key not found in config/config.json")
 
-# Setup OpenAI client
-if use_openai:
-    client = OpenAI(api_key=api_key)
-else:
-    # Ollama setup (ensure Ollama is running locally)
-    ollama_client = ollama
+def load_settings(initialize_ai=True):
+    global config, client
+    directory = Path(__file__).resolve().parent
+    filename = 'huginnmuninn-config.json' if Path(__file__).name == 'sct_daily_news_analysis.py' else 'config.json'
+    config = json.loads((directory / filename).read_text())
+    if initialize_ai:
+        get_analysis_prompt(config)
+    if initialize_ai and config.get('use_openai'):
+        if not config.get('openai_api_key'):
+            raise ValueError('OpenAI API key is required when using OpenAI.')
+        client = OpenAI(api_key=config['openai_api_key'])
 
-# === List of news sites ===
-news_sites = [
-    "https://www.theguardian.com/world",
-    "https://www.theguardian.com/world/europe-news",
-    "https://www.aftonbladet.se",
-    "https://www.expressen.se",
-    "https://www.epochtimes.se",
-    "https://www.svt.se/"
+
+DEFAULT_SITES = [
+    'https://www.theguardian.com/world',
+    'https://www.theguardian.com/world/europe-news',
+    'https://www.aftonbladet.se', 'https://www.expressen.se',
+    'https://www.epochtimes.se', 'https://www.svt.se/',
 ]
 
 
-# === Helper function to scrape site ===
-def scrape_site(url):
-    html = requests.get(url).text
-    soup = BeautifulSoup(html, "html.parser")
-    headlines = []
-
-    # Scraping logic for The Guardian (using the container-latest-news div)
-    if "theguardian" in url:
-        latest_news_container = soup.find('div', {'id': 'container-latest-news'})
-        if latest_news_container:
-            for link in latest_news_container.find_all('a', href=True):
-                href = link.get('href')
-                if href:
-                    headlines.append(href)
-
-    # Scraping logic for Aftonbladet
-    elif "aftonbladet" in url:
-        main_section = soup.find('section', class_='twocolumnlayout-main_3bf5')
-        if main_section:
-            for link in main_section.find_all('a', {'data-test-tag': 'internal-link'}):
-                href = link.get('href')
-                if href:
-                    if not href.startswith('http'):
-                        href = "https://www.aftonbladet.se" + href
-                    headlines.append(href)
-
-    # Scraping logic for Expressen
-    elif "expressen" in url:
-        for teaser in soup.find_all("div", class_="teaser"):
-            anchor = teaser.find("a")
-            if anchor and anchor.get("href"):
-                headlines.append(anchor["href"])
-
-    # Scraping logic for Epoch Times
-    elif "epochtimes" in url:
-        for article in soup.find_all("article", class_="groupItem"):
-            link = article.find("a", href=True)
-            if link:
-                href = link.get("href")
-                if not href.startswith("http"):
-                    href = "https://epochtimes.se" + href
-                headlines.append(href)
-
-        # Scraping logic for SVT
-    elif "svt.se" in url:
-        # Find the div with the class 'LatestNews__contentWrapper___gBmEV'
-        latest_news_container = soup.find('div', class_='LatestNews__contentWrapper___gBmEV')
-
-        if latest_news_container:
-            # Find all list items <li> and extract the <a> tags with the 'href' attribute
-            for item in latest_news_container.find_all('li', class_='LatestNewsItem__root___iB1de'):
-                link = item.find('a', href=True)
-                if link:
-                    href = link.get('href')
-                    if href:
-                        # Ensure to make the URL absolute if it's relative
-                        if not href.startswith('http'):
-                            href = "https://www.svt.se" + href
-                        headlines.append(href)
-
-    return headlines[:10]  # Return the top 10 links
+def scrape_site(url, selector=None, limit=DEFAULT_ARTICLE_LIMIT):
+    """Compatibility wrapper; no publication-specific extraction rules."""
+    return NewsScraper().discover(url, selector=selector, limit=limit)
 
 
 # === Helper function to summarize and analyze article ===
 def summarize_and_analyze_article(article_text, is_swedish=False):
-    prompt = (
-        "Read the following article and do two things:\n"
-        "1. Summarize it from the perspective of what is best for ordinary people, avoiding political spin.\n"
-        "2. Analyze why the politicians made their statements, considering party strategy, internal dynamics, "
-        "and public opinion.\n"
-        "Keep the answer structured with clear bullet points and headings."
-    )
+    prompt = get_analysis_prompt(config)
 
     # Add a note if the article is Swedish
     if is_swedish:
         prompt = "This article is in Swedish.\n" + prompt
 
-    if use_openai:
+    if config.get('use_openai'):
         response = client.chat.completions.create(
-            model="gpt-4",
+            model=config.get("openai_model", "gpt-4"),
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": article_text}
@@ -129,7 +70,7 @@ def summarize_and_analyze_article(article_text, is_swedish=False):
     else:
         # Ollama request via POST method (as per your working setup)
         payload = {
-            "model": "llama3.2:latest",  # Use the appropriate model name for Ollama
+            "model": config.get("ollama_model", "llama3.2:latest"),  # Use the appropriate model name for Ollama
             "messages": [
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": article_text}
@@ -137,9 +78,10 @@ def summarize_and_analyze_article(article_text, is_swedish=False):
         }
 
         response = requests.post(
-            f"{ollama_base_url}/chat/completions",
+            f"{config['ollama_base_url'].rstrip('/') if config['ollama_base_url'].rstrip('/').endswith('/v1') else config['ollama_base_url'].rstrip('/') + '/v1'}/chat/completions",
             headers={"Content-Type": "application/json"},
-            json=payload
+            json=payload,
+            timeout=180
         )
 
         if response.status_code == 200:
@@ -150,64 +92,176 @@ def summarize_and_analyze_article(article_text, is_swedish=False):
 
 
 # === Helper function to send email with list of analysis ===
-def send_email(subject, body):
-    msg = MIMEMultipart()
+def send_email(subject, body, html_body=None):
+    email = config['email'].strip()
+    app_password = ''.join(config['app_password'].split())
+    if not app_password:
+        raise ValueError('Enter a Google app password before sending email.')
+    msg = MIMEMultipart("alternative")
     msg["From"] = email
     msg["To"] = email
     msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+    if html_body is not None:
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
 
+    stage = 'connecting'
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
+            stage = 'signing in'
             server.login(email, app_password)
-            server.sendmail(email, email, msg.as_string())
-        print(f"Email sent: {subject}")
+            stage = 'sending'
+            rejected = server.sendmail(email, email, msg.as_string())
+            if rejected:
+                raise RuntimeError("Gmail rejected the recipient.")
+        print(f"Email submitted to Gmail for {email}: {subject}")
+    except smtplib.SMTPAuthenticationError as error:
+        raise RuntimeError('Gmail rejected the sign-in. Use a Google app password for this email address, not your normal Google password. Spaces are removed automatically. Check 2-Step Verification and whether the app password was revoked.') from error
+    except smtplib.SMTPServerDisconnected as error:
+        if stage == 'signing in':
+            message = 'Gmail closed the connection during sign-in. Spaces are removed automatically; check the email address and Google app password. If it continues, try again later or check your network connection.'
+        else:
+            message = f'Gmail disconnected while {stage}. Check Gmail Sent before retrying if the message may already have been submitted.'
+        raise RuntimeError(message) from error
     except Exception as e:
-        print(f"Error sending email: {e}")
+        raise RuntimeError(f"Email delivery failed: {e}") from e
 
 
-# === Loop through news sites ===
-def process_news():
-    all_analyses = []  # Will hold the analyses for all articles
-
-    for site in news_sites:
-        print(f"Fetching latest news from {site}...")
-        headlines = scrape_site(site)
-
-        for link in headlines:
-            if not link.startswith("http"):
-                parsed = urlparse(site)
-                domain_root = f"{parsed.scheme}://{parsed.netloc}"
-                if not link.startswith("/"):
-                    link = "/" + link
-                link = urljoin(domain_root, link)
-
-            print(f"Processing article: {link}")
-            article_html = requests.get(link).text
-            article_soup = BeautifulSoup(article_html, "html.parser")
-            article_text = " ".join(p.get_text(strip=True) for p in article_soup.find_all("p"))
-
-            # Optional: Limit text size for OpenAI models
-            if len(article_text) > 10000:
-                article_text = article_text[:10000] + "..."
-
-            # Determine if the site is Swedish
-            is_swedish = "svt.se" in site or "aftonbladet.se" in site or "expressen.se" in site
-
-            # Summarize and analyze article
-            analysis = summarize_and_analyze_article(article_text, is_swedish=is_swedish)
-
-            # Create a summary entry with link to the full article
-            all_analyses.append(f"Article: {link}\nAnalysis:\n{analysis}\n\n")
-
-    # Now send a single email with all analyses
-    subject = "Latest News Headlines and Analysis"
-    body = "Here are the latest headlines and their analyses:\n\n" + "\n".join(all_analyses)
-
-    # Send the email with all articles' analysis
-    send_email(subject, body)
-    print("All article analyses sent in one email.")
+def write_report(results, source_errors):
+    """Retain extracted public data and skipped reasons without truncating stored text."""
+    path = Path(__file__).resolve().parent / 'news-results.json'
+    report = {'generated_at': datetime.now(timezone.utc).isoformat(), 'articles': results, 'source_errors': source_errors}
+    fd, temporary = tempfile.mkstemp(prefix='.news-results-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            json.dump(report, stream, indent=2, ensure_ascii=False)
+            stream.write('\n')
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    print(f'Extraction report: {path}')
+    archive_report(path.parent, results, report['generated_at'])
+    return path
 
 
-# Run the news processing and email sending
-process_news()
+def process_news(on_event=None):
+    publish = on_event or (lambda event: None)
+    scraper = NewsScraper()
+    results, source_errors, seen = [], [], set()
+    for source in config.get('news_sites', DEFAULT_SITES):
+        if isinstance(source, str):
+            source = {'url': source}
+        if not source.get('enabled', True):
+            continue
+        site = source['url']
+        print(f'Finding news from {site}…')
+        publish({'type': 'progress', 'message': f'Finding news from {site}…'})
+        try:
+            links = scraper.discover(site, selector=source.get('selector'),
+                                     limit=article_limit(config, source), feed_url=source.get('feed_url'))
+            if not links:
+                source_errors.append({'url': site, 'reason': 'No article links found. Try an RSS/Atom feed URL or an optional CSS selector.'})
+        except Exception as error:
+            source_errors.append({'url': site, 'reason': str(error)})
+            print(f'Skipping source {site}: {error}')
+            continue
+        for link in links:
+            if link in seen:
+                continue
+            seen.add(link)
+            print(f'Reading {link}…')
+            publish({'type': 'article', 'id': link, 'phase': 'reading',
+                     'article': {'url': link, 'source': site, 'title': '', 'analysis': ''}})
+            article = scraper.article(link)
+            if article.url in seen and article.url != link:
+                publish({'type': 'article', 'id': link, 'phase': 'skipped',
+                         'article': dict(article.to_dict(), source=site, analysis='', reason='Duplicate article after redirect.')})
+                continue
+            seen.add(article.url)
+            result = article.to_dict()
+            if not result['title']:
+                hint = title_from_url(article.url)
+                if hint:
+                    result['title'] = hint + ' (from URL)'
+            result['source'] = site
+            result['analysis'] = ''
+            if article.status == 'article':
+                publish({'type': 'article', 'id': link, 'phase': 'analyzing', 'article': dict(result)})
+                try:
+                    text = article.text[:10000]
+                    if len(article.text) > 10000:
+                        text += '\n[Input truncated to the first 10,000 characters.]'
+                    result['analysis'] = summarize_and_analyze_article(
+                        f'Title: {article.title}\n\n{text}', is_swedish=article.language.lower().startswith('sv'))
+                    if not result['analysis']:
+                        raise ValueError('The model returned an empty analysis.')
+                except Exception as error:
+                    result['analysis_error'] = str(error)
+                    print(f'Analysis failed for {link}: {error}')
+            elif article.status in ('paywalled', 'blocked', 'unavailable', 'excerpt') and config.get('search_related_coverage', False):
+                publish({'type': 'article', 'id': link, 'phase': 'analyzing', 'article': dict(result)})
+                try:
+                    result.update(summarize_related(article, config))
+                except Exception as error:
+                    result['analysis_error'] = str(error)
+                    print(f'Related coverage search failed for {link}: {error}')
+            else:
+                print(f'{article.status}: {article.reason}')
+            results.append(result)
+            phase = 'failed' if result.get('analysis_error') else ('complete' if result['analysis'] else 'skipped')
+            publish({'type': 'article', 'id': link, 'phase': phase, 'article': dict(result)})
+    write_report(results, source_errors)
+    body, html_body = render_report(results, source_errors)
+    publish({'type': 'progress', 'message': 'Sending results by email…'})
+    send_email('Latest News Headlines and Analysis', body, html_body)
+    publish({'type': 'progress', 'message': f'Email submitted to Gmail for {config.get("email", "configured address")}.'})
+    return results
+
+
+def resend_saved_report(on_event=None):
+    path = Path(__file__).resolve().parent / 'news-results.json'
+    if not path.is_file():
+        raise ValueError('No saved report exists yet. Finish an extraction or analysis run first.')
+    report = json.loads(path.read_text())
+    articles, errors = report.get('articles'), report.get('source_errors', [])
+    if not isinstance(articles, list) or not isinstance(errors, list):
+        raise ValueError('The saved report has an invalid format.')
+    body, html = render_report(articles, errors)
+    send_email('Latest News Headlines and Analysis', body, html)
+    if on_event:
+        on_event({'type': 'progress', 'message': 'Saved report submitted to Gmail.'})
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Discover and analyze publicly accessible news.')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--resend-report', action='store_true', help='Send the existing news-results.json without scraping or AI requests.')
+    mode.add_argument('--preview', metavar='URL', help='Extract articles without AI requests or email.')
+    parser.add_argument('--events', action='store_true', help='Emit structured live progress and article results for the desktop app.')
+    parser.add_argument('--limit', type=int, default=DEFAULT_ARTICLE_LIMIT, help='Article limit for extraction-only preview (1–100).')
+    args = parser.parse_args()
+    try:
+        preview_limit = article_limit({'articles_per_site': args.limit})
+    except ValueError as error:
+        parser.error(str(error))
+    if args.preview:
+        scraper = NewsScraper()
+        results = [scraper.article(url).to_dict() for url in scraper.discover(args.preview, limit=preview_limit)]
+        write_report(results, [])
+        for item in results:
+            print(f"{item['status']}: {item['title']} — {item['url']}")
+    elif args.resend_report:
+        load_settings(initialize_ai=False)
+        resend_saved_report(on_event=emit_event if args.events else None)
+    else:
+        load_settings()
+        process_news(on_event=emit_event if args.events else None)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (RuntimeError, ValueError, OSError) as error:
+        print(f'Run failed: {error}', file=sys.stderr, flush=True)
+        raise SystemExit(1)
