@@ -14,14 +14,18 @@ class AnalysisPromptTests(unittest.TestCase):
     def test_missing_setting_preserves_existing_prompt(self):
         self.assertEqual(get_analysis_prompt({}), DEFAULT_ANALYSIS_PROMPT)
 
-    def test_openai_uses_custom_prompt_without_template_substitution(self):
-        prompt = 'Give a climate impact analysis.\nReturn JSON with keys {summary, evidence}.'
-        client = Mock()
-        client.chat.completions.create.return_value = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=' Result '))])
-        with patch.object(news, 'config', {'use_openai': True, 'analysis_prompt': prompt}), patch.object(news, 'client', client):
+    def test_legacy_openai_flag_still_uses_ollama(self):
+        prompt = 'Return JSON with keys {summary, evidence}.'
+        response = Mock(status_code=200)
+        response.json.return_value = {'choices': [{'message': {'content': 'Result'}}]}
+        config = {'use_openai': True, 'openai_api_key': 'obsolete',
+                  'ollama_base_url': 'http://localhost:11434', 'ollama_model': 'chosen-model', 'analysis_prompt': prompt}
+        with patch.object(news, 'config', config), patch.object(news.requests, 'post', return_value=response) as post:
             self.assertEqual(news.summarize_and_analyze_article('Article text'), 'Result')
-        self.assertEqual(client.chat.completions.create.call_args.kwargs['messages'], [
-            {'role': 'system', 'content': prompt}, {'role': 'user', 'content': 'Article text'}])
+        self.assertTrue(post.call_args.args[0].startswith('http://localhost:11434/'))
+        self.assertEqual(post.call_args.kwargs['json']['model'], 'chosen-model')
+        self.assertEqual(post.call_args.kwargs['json']['messages'][0]['content'], prompt)
+        self.assertNotIn('obsolete', str(post.call_args))
 
     def test_ollama_uses_custom_prompt_with_swedish_context(self):
         prompt = 'Explain the evidence in three paragraphs.'
@@ -46,10 +50,13 @@ class AnalysisPromptTests(unittest.TestCase):
             directory = Path(temporary)
             config_path = directory / 'settings.json'
             (directory / 'huginnmuninn-deployment.json').write_text('{}')
-            config = dict(email='me@example.com', app_password='test', use_openai=False,
+            config = dict(email='me@example.com', app_password='test', use_openai=True, openai_api_key='obsolete', openai_model='old',
                           ollama_base_url='http://localhost:11434', analysis_prompt='A custom prompt\nwith line breaks.',
                           deployment={'directory': str(directory)})
             with patch.object(config_manager, 'CONFIG', config_path):
                 config_manager.save_config(config)
-            self.assertEqual(json.loads(config_path.read_text())['analysis_prompt'], config['analysis_prompt'])
+            saved = json.loads(config_path.read_text())
+            self.assertEqual(saved['analysis_prompt'], config['analysis_prompt'])
+            self.assertFalse({'use_openai', 'openai_api_key', 'openai_model'} & saved.keys())
+            self.assertFalse({'use_openai', 'openai_api_key', 'openai_model'} & json.loads((directory / 'huginnmuninn-config.json').read_text()).keys())
             self.assertEqual(json.loads((directory / 'huginnmuninn-config.json').read_text())['analysis_prompt'], config['analysis_prompt'])

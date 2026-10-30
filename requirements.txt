@@ -7,14 +7,5 @@ requests>=2.30.0
 # HTML parsing and web scraping
 beautifulsoup4>=4.12.2
 
-# OpenAI API client (optional if using OpenAI GPT models)
-openai>=1.27.0
-
-# Ollama Python interface (optional if using Ollama locally)
-ollama>=0.1.0
-
 # Bootstrap-inspired desktop UI
 ttkbootstrap>=1.20,<2
-
-# Pydantic V1 does not support Python 3.14; current runtime uses V2.
-pydantic>=2.12,<3; python_version >= "3.14"

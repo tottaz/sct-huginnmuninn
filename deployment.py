@@ -53,9 +53,10 @@ def deploy(config):
     if FROZEN and runner is None:
         raise RuntimeError('The application is missing its bundled analysis runtime. Rebuild the app.')
     if runner is None:
-        subprocess.run([sys.executable, '-c', 'import requests, bs4, openai'], check=True, capture_output=True, timeout=30)
+        subprocess.run([sys.executable, '-c', 'import requests, bs4'], check=True, capture_output=True, timeout=30)
     # A dedicated config avoids touching config-sct.json used by other live scripts.
     files = {SCRIPT_NAME: (source.read_bytes(), 0o600),
+             'smtp_settings.py': ((ASSETS / 'smtp_settings.py').read_bytes(), 0o600),
              'email_report.py': ((ASSETS / 'email_report.py').read_bytes(), 0o600),
              'result_formatting.py': ((ASSETS / 'result_formatting.py').read_bytes(), 0o600),
              'article_settings.py': ((ASSETS / 'article_settings.py').read_bytes(), 0o600),
@@ -63,6 +64,7 @@ def deploy(config):
              'analysis_prompt.py': ((ASSETS / 'analysis_prompt.py').read_bytes(), 0o600),
              'news_scraper.py': ((ASSETS / 'news_scraper.py').read_bytes(), 0o600),
              'related_coverage.py': ((ASSETS / 'related_coverage.py').read_bytes(), 0o600),
+             'ui_language.py': ((ASSETS / 'ui_language.py').read_bytes(), 0o600),
              'news_history.py': ((ASSETS / 'news_history.py').read_bytes(), 0o600),
              'huginnmuninn-config.json': ((json.dumps(config, indent=2) + '\n').encode(), 0o600)}
     command = [str(directory / RUNNER_NAME)] if runner else [sys.executable, '-u', str(directory / SCRIPT_NAME)]

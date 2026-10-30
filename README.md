@@ -18,11 +18,9 @@ This is part of the [SocialLab](https://socialclimate.tech/sociallab), our colla
 
 ## Features
 - **Dual-perspective AI summaries**: one from the people’s view, one from the political view.
-- **Two AI options**:
-  - **OpenAI API** – use `gpt-4` (or another model) via your API key.
-  - **Ollama** – run LLaMA or other local models for a fully offline experience.
+- **Ollama analysis** – choose an installed local model from the app; no analysis API key or provider selection is required.
 - **Runs automatically twice a day** using cron (Mac/Linux) or Task Scheduler (Windows).
-- **Email delivery** of summaries via Gmail.
+- **Email delivery** through configurable SMTP, including Gmail and other password-based SMTP servers.
 - **Easy customization** of scraping targets, prompts, and output.
 
 ---
@@ -61,15 +59,12 @@ cp config.example.json config.json
 
 ```bash
       {
-          "openai_api_key": "YOUR_OPENAI_API_KEY",
           "email": "your.email@gmail.com",
           "app_password": "your_gmail_app_password",
-          "use_openai": true,
-          "ollama_base_url": "http://localhost:11434"
+          "ollama_base_url": "http://localhost:11434",
+          "ollama_model": "llama3.2:latest"
       }
 ```
-
-use_openai – set to true for OpenAI, false for Ollama.
 
 ollama_base_url – default for local Ollama install.
 
@@ -89,7 +84,7 @@ ollama pull llama3.2
 
 Start Ollama (it usually runs at http://localhost:11434).
 
-Set "use_openai": false in config.json.
+Select your installed Ollama model in the app and save settings.
 
 How the Script Works
 
@@ -121,7 +116,7 @@ prompt = (
 
 ```
 Edit these instructions in the app’s **Analysis prompt** tab and click **Save settings**.
-The saved prompt is used by both OpenAI and Ollama.
+The saved prompt is used by Ollama.
 
 Email delivery – The script compiles all summaries and emails them to you.
 
@@ -158,9 +153,9 @@ follow the saved source order.
 
 Prompt style – edit the **Analysis prompt** tab in the settings app.
 
-Email recipients – change the send_email function.
+Email delivery – set the recipient, sender and SMTP connection in the app’s **Email delivery** tab.
 
-Model choice – swap OpenAI models (gpt-4, gpt-3.5) or Ollama models.
+Model choice – select any model installed on your Ollama server.
 
 ## Contributing
 
@@ -195,15 +190,25 @@ python3 config_ui.py
 Tkinter and the dependencies in `requirements.txt` must be available in that Python
 installation. The desktop interface uses [ttkbootstrap](https://github.com/israel-dryer/ttkbootstrap)
 for Bootstrap-inspired native styling. Settings are displayed as
-labeled fields: AI provider, email, masked Gmail app password and OpenAI API key,
-OpenAI model, Ollama server URL, Ollama model, and articles per site. Use the **Show** checkbox beside either credential to reveal it; uncheck it to
-hide the value again. Both fields start masked. No JSON editing is needed. The underlying `config.json` format is preserved, including custom keys.
-Use the **AI & delivery**, **Analysis prompt**, **News sources**, and **Schedule & deployment**, and **Results** tabs
+labeled fields: Ollama server URL, Ollama model, articles per site, recipient, sender,
+SMTP server, port, encryption, username and masked password. Use the **Show** checkbox beside a credential to reveal it;
+uncheck it to hide the value again. Credentials start masked. No JSON editing is needed. The underlying `config.json` format is preserved, including custom keys.
+Use the **Analysis engine**, **Email delivery**, **Analysis prompt**, **News sources**,
+**Schedule & deployment**, **Results**, and **News history** tabs
 to move between settings. The activity panel stays visible across tabs. The
 **Appearance** picker switches between dark and light themes immediately;
 **Save settings** remembers the selection. Use **Show** toggles to reveal credentials.
 Click **Save settings** to persist changes; **Reload** discards unsaved edits.
 Saved config files use owner-only permissions.
+
+Use **Language / Språk** to switch between **English** and **Svenska** immediately,
+including tabs, buttons, dialogs and history actions. Switching preserves unfinished
+form edits and running work. Click **Use as default / Använd som standard** to save
+the startup language independently of other edits. The default is English for
+existing settings without a language preference. This preference is stored as
+`appearance.language` (`en` or `sv`); it affects only the app interface. It does
+not translate original articles, change the analysis prompt or model output, or
+change the language of email reports.
 
 News sites appear in a table. Use **Add site**, or select a row and click
 **Edit site** / **Delete site**. Enter the site URL and leave the other fields blank
@@ -255,7 +260,12 @@ URLs, article text, and analysis. Clear the search field to show all entries.
 Select a row and click **View selected**, or double-click it, to read the saved
 lead, extracted text, analysis, sources and any extraction or analysis error.
 Select several rows with Command/Ctrl or Shift and click **Delete selected** to
-remove them after confirmation. Deletion is permanent and reclaims archive space;
+remove them after confirmation. **Select all** selects every visible search result
+(also Command+A on macOS or Ctrl+A elsewhere); **Clear selection** deselects them.
+The status line shows the number of matches and selected entries. **Delete all**
+clears the entire archive in the current deployment folder, including entries
+hidden by the search filter. Its confirmation names that folder and the total
+entry count; cancelling leaves the archive untouched. Deletion is permanent and reclaims archive space;
 it does not delete sent email or the separate last-report file.
 
 History is stored as `news-history.sqlite3` in the deployment folder. Changing
@@ -294,7 +304,7 @@ Fresh app and email screenshots are pending Computer Use permission for capture.
 
 ### Deploying updates
 
-In **AI & delivery**, optionally enable **Search related coverage when articles cannot be read**
+In **Analysis engine**, optionally enable **Search related coverage when articles cannot be read**
 and enter a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey).
 The configurable search model uses Gemini's Google Search tool (default:
 `gemini-3.8-flash`). API charges and quotas may apply. The headline, URL and public
@@ -361,16 +371,15 @@ to avoid collecting optional libraries from unrelated projects. Packaging follow
 ### Selecting an Ollama model
 
 1. Start Ollama and install the models you want, for example `ollama pull llama3.2`.
-2. Open `python3 config_ui.py`. Set **AI provider** to **Ollama** and
-   **Ollama server URL** to your server, normally `http://localhost:11434`.
+2. Open the app or run `python3 config_ui.py`. Set **Ollama server** to your
+   server, normally `http://localhost:11434`.
    URLs ending in `/v1` are also supported.
 3. Click **Refresh models**. The **Ollama model** dropdown lists installed models
    from the current server field, including unsaved changes. Loading runs in the
    background to keep the window responsive.
 4. Select a model, then click **Save settings**, or **Run now** to save and run.
 
-The selected model is used for manual and scheduled runs when the provider is
-Ollama. Selecting a model does not change the provider automatically. You may also
+The selected Ollama model is used for manual and scheduled runs. You may also
 type a model name into the model field. **Reload** restores the saved selection.
 Refresh preserves your current setting and flags models unavailable on the server.
 
@@ -432,7 +441,7 @@ feed discovery tries at most three advertised feeds per source.
 Open **Analysis prompt** to edit the instructions sent for every article. Use the
 multiline editor to specify your preferred focus, language, tone, and response
 format, then click **Save settings**. The instructions are stored in
-`analysis_prompt` in `config.json` and used by both OpenAI and Ollama. Line breaks
+`analysis_prompt` in `config.json` and used by Ollama. Line breaks
 and literal braces are preserved; there are no template placeholders to fill in.
 Article text is sent separately as the user message, so it does not need to be
 pasted into the prompt. A Swedish-language context note is still added when the
@@ -525,9 +534,43 @@ Activity remains a compact log, while Results is the place to read article conte
 and analysis. Extraction-only entries are counted as **extracted**, not analyzed.
 
 
-### Formatted Gmail delivery and email preview
+### Connecting another email service
 
-**Run now** and scheduled cron runs submit one combined report through Gmail SMTP
+Open **Email delivery** and enter your provider's SMTP connection details:
+
+| Field | Meaning |
+| --- | --- |
+| Recipient email | The address receiving the report. |
+| Sender email | The permitted From address; blank uses the recipient. |
+| SMTP server | Hostname only, such as `mail.example.org`. |
+| SMTP port | Your provider's port. Standard ports change automatically when choosing encryption; custom ports are preserved. |
+| Encryption | `ssl`: TLS immediately (normally 465); `starttls`: upgrade before login (normally 587); `none`: unencrypted, for a deliberately configured relay (normally 25). |
+| Server requires authentication | Enabled for password sign-in; disable for an authorized relay that needs no login. |
+| SMTP username | The server's login name, which may differ from the sender; blank uses the recipient. |
+| Password / app password | Your provider's SMTP password or app password. Use **Show** to reveal it. |
+
+Click **Test connection (no email)** to check the current, even unsaved connection
+settings without scraping, AI requests, or sending a message. The test runs in the
+background and checks encryption, optional login, and the server's response. A
+successful connection test does not guarantee that a provider will permit the
+configured sender or deliver to the recipient. **Save settings** persists the
+connection; **Run now** and **Send saved report** use the same SMTP configuration.
+
+TLS modes verify certificates and never fall back to an unencrypted connection if
+negotiation fails, following [Python's SMTP interface](https://docs.python.org/3/library/smtplib.html).
+Password-based SMTP authentication is supported; OAuth-only accounts need a
+separate integration and are not supported by this form.
+
+Existing configurations without SMTP settings keep Gmail defaults: `smtp.gmail.com`,
+port 465, SSL/TLS, and the recipient as sender and username. Google app-password
+spacing is removed only for that host. Passwords for other hosts are preserved
+exactly, including leading, trailing and internal spaces. The existing
+`app_password` storage key is retained for compatibility; the new server settings
+are stored under `smtp`. No configuration-file editing is required.
+
+### SMTP email settings and formatted reports
+
+**Run now** and scheduled cron runs submit one combined report through the configured SMTP server
 using the configured **Email** and **App password** fields. The report is sent from
 that address to the same address. Results remain visible in the app and in the
 saved report. **Test site (no AI/email)** and extraction-only CLI previews do not
@@ -548,7 +591,7 @@ so far. This action does not send email, make AI requests, or rerun extraction.
 The local preview is saved as `email-preview.html` beside the editor's config with
 owner-only permissions. Browser rendering can vary slightly from Gmail.
 
-The activity panel reports when Gmail has accepted the message for delivery.
+The activity panel reports when the SMTP server has accepted the message for delivery.
 Authentication or connection errors make the run fail visibly while preserving
 article results. SMTP acceptance does not guarantee inbox placement; check Spam
 if the submitted report is missing. To enable this version for scheduled runs,
@@ -604,7 +647,7 @@ Open Anyway** flow after attempting to open the app. Do not disable Gatekeeper.
 
 ### Gmail password spacing and retrying delivery
 
-Paste the Google app password with or without its display spaces. The app removes
+Paste the Google app password with or without its display spaces. For `smtp.gmail.com`, the app removes
 all whitespace when saving and again before SMTP sign-in, including non-breaking
 spaces from copied text. Use a Google app password for the configured Gmail
 address. A disconnected SMTP session is not proof of an incorrect password; the
@@ -631,10 +674,9 @@ Before publishing a DMG, the builder opens and closes the packaged UI with a
 blocks publication and keeps the previous working DMG. This check opens a temporary
 window but does not start scraping, analysis, or email delivery.
 
-The Pydantic V1 warning is separate: PyInstaller may inspect V1 compatibility
-modules even when the app uses V2. The builder validates an actual V2 model and
-requires Pydantic 2.12+ on Python 3.14. Pydantic documents this distinction in its
-[Python 3.14 support notes](https://pydantic.dev/articles/pydantic-v2-12-release).
+The app no longer requires the OpenAI SDK, Ollama Python SDK, or Pydantic.
+Older OpenAI settings are ignored and removed when settings are saved; existing
+Ollama model and server settings are preserved.
 The `hdiutil ... deprecated` warning does not by itself mean the image failed;
 image creation and verification must both succeed.
 

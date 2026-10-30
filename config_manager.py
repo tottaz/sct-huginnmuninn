@@ -6,6 +6,8 @@ import re
 import shlex
 import subprocess
 import sys
+from smtp_settings import settings as smtp_options
+from ui_language import validate_language
 from article_settings import article_limit
 from analysis_prompt import get_analysis_prompt
 from deployment import ASSETS, FROZEN, atomic_write, deploy, rollback, sync_deployed_config
@@ -37,6 +39,10 @@ DEFAULT_SITES = [
 def validate(config):
     if not isinstance(config, dict):
         raise ValueError('Configuration must be a JSON object.')
+    appearance = config.get('appearance', {})
+    if not isinstance(appearance, dict):
+        raise ValueError('appearance must be an object.')
+    validate_language(appearance.get('language', 'en'))
     get_analysis_prompt(config)
     if not isinstance(config.get('search_related_coverage', False), bool):
         raise ValueError('search_related_coverage must be true or false.')
@@ -45,13 +51,10 @@ def validate(config):
             raise ValueError(f'{key} must be a string.')
     if config.get('search_related_coverage') and not config.get('gemini_api_key', '').strip():
         raise ValueError('A Gemini API key is required for related coverage searches.')
-    for key in ('email', 'app_password', 'ollama_base_url'):
+    for key in ('email', 'ollama_base_url'):
         if not isinstance(config.get(key), str) or not config[key].strip():
             raise ValueError(f'{key} must be a nonempty string.')
-    if not isinstance(config.get('use_openai'), bool):
-        raise ValueError('use_openai must be true or false.')
-    if config['use_openai'] and not config.get('openai_api_key'):
-        raise ValueError('openai_api_key is required when use_openai is true.')
+    smtp_options(config)
     article_limit(config)
     sites = config.get('news_sites', DEFAULT_SITES)
     if not isinstance(sites, list):
@@ -100,8 +103,10 @@ def validate_cron(expression):
 
 def save_config(config):
     config = dict(config)
+    for key in ('use_openai', 'openai_api_key', 'openai_model'):
+        config.pop(key, None)
     if isinstance(config.get('app_password'), str):
-        config['app_password'] = ''.join(config['app_password'].split())
+        config['app_password'] = smtp_options(config)['password']
     validate(config)
     atomic_write(CONFIG, (json.dumps(config, indent=2) + '\n').encode())
     sync_deployed_config(config)

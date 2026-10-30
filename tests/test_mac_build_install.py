@@ -107,6 +107,17 @@ class StartupGateTests(unittest.TestCase):
                 return SimpleNamespace(returncode=0,stdout='',stderr='')
             build_app.validate_app_launch(app,runner=launched)
 
+    def test_swedish_ui_confirmation_is_accepted(self):
+        import json
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as temporary:
+            app = Path(temporary) / 'app.app'
+            make_app(app)
+            def launched(command, **kwargs):
+                Path(command[-1]).write_text(json.dumps({'tabs': ['AI och e-post', 'Resultat'], 'version': '1.0.0', 'build_id': 'test1234'}))
+                return SimpleNamespace(returncode=0, stdout='', stderr='')
+            build_app.validate_app_launch(app, runner=launched)
+
     def test_failed_startup_preserves_previous_release(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);(root/'build').mkdir()

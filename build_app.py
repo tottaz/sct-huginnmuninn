@@ -25,27 +25,21 @@ def run(*args):
 
 def check_build_environment():
     """Check real imports, not just package metadata discovered by PyInstaller."""
-    names = ('PyInstaller', 'ttkbootstrap', 'requests', 'bs4', 'openai')
+    names = ('PyInstaller', 'ttkbootstrap', 'requests', 'bs4')
     missing = [name for name in names if importlib.util.find_spec(name) is None]
     if missing:
         raise ValueError('Missing build dependencies: ' + ', '.join(missing) + '. Use .venv-build/bin/python or install requirements.txt and requirements-build.txt in the selected environment.')
     theme_spec = importlib.util.find_spec('ttkbootstrap')
     if theme_spec.submodule_search_locations is None:
         raise ValueError(f'ttkbootstrap resolves to a module, not its required package: {theme_spec.origin}. Remove a shadowing ttkbootstrap.py file or select the prepared project environment.')
-    probe = """import json,sys,ttkbootstrap,PyInstaller,requests,bs4,openai,pydantic
-from pydantic import BaseModel
-class Check(BaseModel):
-    value: str
-assert Check(value='ok').value == 'ok'
-if sys.version_info >= (3,14) and tuple(int(part) for part in pydantic.VERSION.split('.')[:2]) < (2,12):
-    raise RuntimeError('Python 3.14 requires Pydantic 2.12 or newer; Pydantic V1 is unsupported.')
-print(json.dumps({'python':sys.executable,'theme_package':ttkbootstrap.__file__,'pydantic':pydantic.VERSION}))
+    probe = """import json,sys,ttkbootstrap,PyInstaller,requests,bs4
+print(json.dumps({'python':sys.executable,'theme_package':ttkbootstrap.__file__}))
 """
     result = subprocess.run([sys.executable, '-c', probe], capture_output=True, text=True, timeout=30)
     if result.returncode:
         raise RuntimeError('Build dependency imports failed before packaging:\n' + (result.stderr or result.stdout)[-3000:])
     details = json.loads(result.stdout)
-    print(f"Build Python: {details['python']}\nTheme package: {details['theme_package']}\nPydantic runtime: {details['pydantic']}", flush=True)
+    print(f"Build Python: {details['python']}\nTheme package: {details['theme_package']}", flush=True)
     return details
 
 
@@ -66,7 +60,7 @@ def validate_app_launch(app, runner=None):
             diagnostic = (result.stderr or result.stdout or 'App closed without confirming startup.')[-3000:]
             raise RuntimeError('Packaged app startup failed; no DMG was published:\n' + diagnostic)
         data = json.loads(report.read_text())
-        if not isinstance(data.get('tabs'), list) or 'Results' not in data['tabs']:
+        if not isinstance(data.get('tabs'), list) or not {'Results', 'Resultat'}.intersection(data['tabs']):
             raise RuntimeError('Packaged app did not create the required UI; no DMG was published.')
         if data.get('version') != info.get('CFBundleShortVersionString') or data.get('build_id') != info.get('HuginnBuildID'):
             raise RuntimeError('Displayed version/build does not match the app bundle; rebuild before publishing a DMG.')
@@ -134,13 +128,13 @@ def build(app_only=False, dmg_only=False, version=None):
     suffix = '.exe' if sys.platform == 'win32' else ''
     icon = ROOT / 'assets' / ('app.ico' if suffix else 'app.icns')
     base = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--specpath', ROOT / 'build', '--log-level', 'WARN']
-    for module in ['torch', 'tensorflow', 'transformers', 'pandas', 'scipy', 'numpy', 'matplotlib', 'IPython', 'jupyter', 'notebook', 'cv2', 'moviepy', 'sympy', 'pytest', 'sklearn']:
+    for module in ['openai', 'ollama', 'pydantic', 'pydantic_core', 'torch', 'tensorflow', 'transformers', 'pandas', 'scipy', 'numpy', 'matplotlib', 'IPython', 'jupyter', 'notebook', 'cv2', 'moviepy', 'sympy', 'pytest', 'sklearn']:
         base += ['--exclude-module', module]
     run(*base, '--onefile', '--name', 'news-runner', '--exclude-module', 'tkinter', ROOT / 'analysis_runner.py')
     command = [*base, '--windowed', '--onedir', '--name', NAME, '--icon', icon, '--collect-data', 'ttkbootstrap']
     if sys.platform == 'darwin':
         command += ['--osx-bundle-identifier', APP_ID]
-    for name in ['daily_news_analysis.py', 'news_scraper.py', 'related_coverage.py', 'news_history.py', 'analysis_prompt.py', 'run_events.py', 'article_settings.py', 'email_report.py', 'result_formatting.py', 'config.example.json']:
+    for name in ['daily_news_analysis.py', 'news_scraper.py', 'related_coverage.py', 'news_history.py', 'ui_language.py', 'analysis_prompt.py', 'run_events.py', 'article_settings.py', 'email_report.py', 'smtp_settings.py', 'result_formatting.py', 'config.example.json']:
         command += ['--add-data', f'{ROOT / name}{os.pathsep}.']
     command += ['--add-data', f'{build_info}{os.pathsep}.', '--add-data', f'{DIST / ("news-runner" + suffix)}{os.pathsep}.', ROOT / 'config_ui.py']
     run(*command)

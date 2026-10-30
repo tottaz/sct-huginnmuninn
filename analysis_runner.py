@@ -5,7 +5,6 @@ import sys
 # Explicit imports let PyInstaller discover analysis dependencies.
 import requests
 import bs4
-import openai
 import news_scraper
 # Importing the analysis module is side-effect free. This lets the packager track
 # every dependency used by the deployed script loaded through runpy below.

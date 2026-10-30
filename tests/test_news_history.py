@@ -19,3 +19,16 @@ class HistoryTests(unittest.TestCase):
             self.assertEqual(len(search_history(directory)), 1)
             with self.assertRaises(ValueError):
                 get_article(directory, rows[0][0])
+
+    def test_multiple_deletion_and_clear_all_ignores_search(self):
+        from news_history import delete_all_entries
+        with tempfile.TemporaryDirectory() as directory:
+            archive_report(directory, [{'title': title, 'text': title} for title in ('Visible', 'Visible two', 'Hidden')], '2026-10-30T10:00:00+00:00')
+            visible = search_history(directory, 'Visible')
+            delete_entries(directory, [row[0] for row in visible])
+            self.assertEqual([row[2] for row in search_history(directory)], ['Hidden'])
+            self.assertEqual(delete_all_entries(directory), 1)
+            self.assertEqual(search_history(directory), [])
+            self.assertEqual(delete_all_entries(directory), 0)
+            archive_report(directory, [{'title': 'New after clearing'}], '2026-10-30T11:00:00+00:00')
+            self.assertEqual(len(search_history(directory)), 1)

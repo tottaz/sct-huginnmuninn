@@ -48,3 +48,13 @@ def delete_entries(directory, entry_ids):
     # Reclaim space after removing stored article bodies.
     with connect(directory) as database:
         database.execute('VACUUM')
+
+
+def delete_all_entries(directory):
+    """Clear the entire archive, independently of any UI search filter."""
+    with connect(directory) as database:
+        count = database.execute('SELECT count(*) FROM articles').fetchone()[0]
+        database.execute('DELETE FROM articles')
+    with connect(directory) as database:
+        database.execute('VACUUM')
+    return count

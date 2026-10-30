@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import smtplib
+from smtp_settings import settings as smtp_options, connection as smtp_connection
 import sys
 import tempfile
 from email.mime.text import MIMEText
@@ -10,7 +11,6 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timezone
 
 import requests
-from openai import OpenAI
 from news_scraper import NewsScraper
 from analysis_prompt import get_analysis_prompt
 from run_events import emit_event
@@ -20,20 +20,15 @@ from related_coverage import summarize_related, title_from_url
 from news_history import archive_report
 
 config = {}
-client = None
 
 
 def load_settings(initialize_ai=True):
-    global config, client
+    global config
     directory = Path(__file__).resolve().parent
     filename = 'huginnmuninn-config.json' if Path(__file__).name == 'sct_daily_news_analysis.py' else 'config.json'
     config = json.loads((directory / filename).read_text())
     if initialize_ai:
         get_analysis_prompt(config)
-    if initialize_ai and config.get('use_openai'):
-        if not config.get('openai_api_key'):
-            raise ValueError('OpenAI API key is required when using OpenAI.')
-        client = OpenAI(api_key=config['openai_api_key'])
 
 
 DEFAULT_SITES = [
@@ -57,71 +52,59 @@ def summarize_and_analyze_article(article_text, is_swedish=False):
     if is_swedish:
         prompt = "This article is in Swedish.\n" + prompt
 
-    if config.get('use_openai'):
-        response = client.chat.completions.create(
-            model=config.get("openai_model", "gpt-4"),
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": article_text}
-            ]
-        )
-        return response.choices[0].message.content.strip()
+    # Ollama request via POST method (as per your working setup)
+    payload = {
+        "model": config.get("ollama_model", "llama3.2:latest"),  # Use the appropriate model name for Ollama
+        "messages": [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": article_text}
+        ]
+    }
 
+    response = requests.post(
+        f"{config['ollama_base_url'].rstrip('/') if config['ollama_base_url'].rstrip('/').endswith('/v1') else config['ollama_base_url'].rstrip('/') + '/v1'}/chat/completions",
+        headers={"Content-Type": "application/json"},
+        json=payload,
+        timeout=180
+    )
+
+    if response.status_code == 200:
+        result = response.json()
+        return result["choices"][0]["message"]["content"].strip()
     else:
-        # Ollama request via POST method (as per your working setup)
-        payload = {
-            "model": config.get("ollama_model", "llama3.2:latest"),  # Use the appropriate model name for Ollama
-            "messages": [
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": article_text}
-            ]
-        }
-
-        response = requests.post(
-            f"{config['ollama_base_url'].rstrip('/') if config['ollama_base_url'].rstrip('/').endswith('/v1') else config['ollama_base_url'].rstrip('/') + '/v1'}/chat/completions",
-            headers={"Content-Type": "application/json"},
-            json=payload,
-            timeout=180
-        )
-
-        if response.status_code == 200:
-            result = response.json()
-            return result["choices"][0]["message"]["content"].strip()
-        else:
-            raise Exception(f"Error with Ollama API: {response.text}")
+        raise Exception(f"Error with Ollama API: {response.text}")
 
 
 # === Helper function to send email with list of analysis ===
 def send_email(subject, body, html_body=None):
-    email = config['email'].strip()
-    app_password = ''.join(config['app_password'].split())
-    if not app_password:
-        raise ValueError('Enter a Google app password before sending email.')
+    options = smtp_options(config)
+    email, sender = options['recipient'], options['sender']
+    gmail = options['host'].lower() == 'smtp.gmail.com'
     msg = MIMEMultipart("alternative")
-    msg["From"] = email
+    msg["From"] = sender
     msg["To"] = email
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain", "utf-8"))
     if html_body is not None:
         msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    stage = 'connecting'
+    stage = 'connecting or signing in'
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
-            stage = 'signing in'
-            server.login(email, app_password)
+        with smtp_connection(options) as server:
             stage = 'sending'
-            rejected = server.sendmail(email, email, msg.as_string())
+            rejected = server.sendmail(sender, email, msg.as_string())
             if rejected:
-                raise RuntimeError("Gmail rejected the recipient.")
-        print(f"Email submitted to Gmail for {email}: {subject}")
+                raise RuntimeError("The SMTP server rejected the recipient.")
+        print(f"Email submitted via {options['host']} for {email}: {subject}")
     except smtplib.SMTPAuthenticationError as error:
+        if not gmail:
+            raise RuntimeError('The SMTP server rejected the sign-in. Check the username, password and whether the provider permits password-based SMTP authentication.') from error
         raise RuntimeError('Gmail rejected the sign-in. Use a Google app password for this email address, not your normal Google password. Spaces are removed automatically. Check 2-Step Verification and whether the app password was revoked.') from error
     except smtplib.SMTPServerDisconnected as error:
-        if stage == 'signing in':
+        if gmail and stage == 'connecting or signing in':
             message = 'Gmail closed the connection during sign-in. Spaces are removed automatically; check the email address and Google app password. If it continues, try again later or check your network connection.'
         else:
-            message = f'Gmail disconnected while {stage}. Check Gmail Sent before retrying if the message may already have been submitted.'
+            message = f'The SMTP server disconnected while {stage}. Check your sent mail before retrying if the message may already have been submitted.'
         raise RuntimeError(message) from error
     except Exception as e:
         raise RuntimeError(f"Email delivery failed: {e}") from e
@@ -215,7 +198,7 @@ def process_news(on_event=None):
     body, html_body = render_report(results, source_errors)
     publish({'type': 'progress', 'message': 'Sending results by email…'})
     send_email('Latest News Headlines and Analysis', body, html_body)
-    publish({'type': 'progress', 'message': f'Email submitted to Gmail for {config.get("email", "configured address")}.'})
+    publish({'type': 'progress', 'message': f'Email submitted to the SMTP server for {config.get("email", "configured address")}.'})
     return results
 
 
@@ -230,7 +213,7 @@ def resend_saved_report(on_event=None):
     body, html = render_report(articles, errors)
     send_email('Latest News Headlines and Analysis', body, html)
     if on_event:
-        on_event({'type': 'progress', 'message': 'Saved report submitted to Gmail.'})
+        on_event({'type': 'progress', 'message': 'Saved report submitted to the SMTP server.'})
 
 
 def main():

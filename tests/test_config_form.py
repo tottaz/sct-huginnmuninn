@@ -11,9 +11,8 @@ class Field:
 class FormTests(unittest.TestCase):
     def test_form_serialization_preserves_unknown_settings(self):
         editor = Editor.__new__(Editor)
-        editor.original = {'custom': {'keep': True}, 'schedule': {'custom': 'keep'}}
-        editor.fields = {key: Field(value) for key, value in dict(email='me@example.com', app_password=' secret ', openai_api_key='', openai_model='gpt-4', ollama_base_url='http://localhost:11434', articles_per_site='5').items()}
-        editor.provider = Field('Ollama')
+        editor.original = {'use_openai': True, 'openai_api_key': 'obsolete', 'openai_model': 'old', 'custom': {'keep': True}, 'schedule': {'custom': 'keep'}}
+        editor.fields = {key: Field(value) for key, value in dict(email='me@example.com', app_password=' secret ', ollama_base_url='http://localhost:11434', articles_per_site='5').items()}
         editor.model = Field('gemma4:latest')
         editor.expression = Field('0 10,19 * * *')
         editor.deployment_backups = Field(False)
@@ -22,7 +21,9 @@ class FormTests(unittest.TestCase):
         self.assertEqual(config['articles_per_site'], 5)
         self.assertEqual(config['app_password'], 'secret')
         self.assertEqual(config['ollama_model'], 'gemma4:latest')
-        self.assertFalse(config['use_openai'])
+        self.assertNotIn('use_openai', config)
+        self.assertNotIn('openai_api_key', config)
+        self.assertNotIn('openai_model', config)
         self.assertEqual(config['custom'], {'keep': True})
         self.assertEqual(config['schedule'], {'custom': 'keep', 'expression': '0 10,19 * * *'})
         self.assertFalse(config['deployment']['backups'])

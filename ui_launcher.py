@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-UI_MODULES = ('tkinter', 'ttkbootstrap', 'requests', 'bs4', 'openai')
+UI_MODULES = ('tkinter', 'ttkbootstrap', 'requests', 'bs4')
 
 
 def ensure_ui_runtime(script):

@@ -40,7 +40,7 @@ class RunEventTests(unittest.TestCase):
         self.assertEqual([item['phase'] for item in article_events], ['reading', 'analyzing', 'complete', 'reading', 'skipped'])
         self.assertEqual(article_events[2]['article']['analysis'], 'The full returned analysis.')
         self.assertEqual(events[-2]['message'], 'Sending results by email…')
-        self.assertIn('Email submitted to Gmail', events[-1]['message'])
+        self.assertIn('Email submitted to the SMTP server', events[-1]['message'])
 
     def test_messages_from_earlier_runs_cannot_change_current_run(self):
         editor = Editor.__new__(Editor)
